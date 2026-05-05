@@ -44,10 +44,23 @@ pip install requests chromadb
 
 **2. Create `.env` in project root:**
 ```
+# Calling LLM models 
+
 WATSONX_URL=https://eu-de.ml.cloud.ibm.com
 WATSONX_PROJECT_ID=your_project_id
 WATSONX_API_KEY=your_api_key
 WATSONX_MODEL_ID=meta-llama/llama-3-3-70b-instruct
+
+# watsonX Orchestrate (ADK)
+
+ORCHESTRATE_URL=https://api-eu-de.watson-orchestrate.cloud.ibm.com/instances/ba0aa69
+ORCHESTRATE_API_KEY=YzzXPUGMbzIzmhKW9mE-92LpzQSma9Rd7JVfFXn0WbHB
+
+# Connect to Langfuse
+
+LANGFUSE_SECRET_KEY=sk-lf-199f881f-8b8d-44f3-b923-7931956f1d1a
+LANGFUSE_PUBLIC_KEY=pk-lf-af60f384-33c7-45d7-94ca-b06391557ca0
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 **3. Run the full pipeline:**
@@ -106,9 +119,12 @@ project-watsonx-group29/
 ├── rag/                      ← knowledge layer, self-contained
 │   ├── chunks.py
 │   ├── retriever.py
-│   └── README.md
+│   ├── update_chunks_docling.py    ← gets the key points from the sources automatically
+│   └── chunk_suggestions.md        ← summary of generated info from the sources for chunks
 ├── scripts/
 │   └── run_survey.py
+├── agents/                   ← keeps generated agents for watsonx orchestrate
+│   └── generate_persona_yamls.py 
 ├── evaluation/
 │   ├── results/              ← evaluation outputs
 │   └── scripts/
@@ -122,8 +138,9 @@ project-watsonx-group29/
 │   └── insights_report.py    ← category-level enriched report per persona
 ├── personas/                 ← persona specifications
 ├── prompts/                  ← LLM prompts
-├── survey/                   ← generated survey questions
+├── survey/                   ← keeps the generated survey questions
 ├── responses/                ← raw persona outputs
+├── sources/                  ← source pdfs for demographic data 
 └── insights/                 ← analyst outputs
     ├── insights_visa_survey_{timestamp}.json   ← analyst agent output
     └── insight_report_{timestamp}.json         ← insight report output
