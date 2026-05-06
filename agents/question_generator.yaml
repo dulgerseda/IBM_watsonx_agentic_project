@@ -26,4 +26,5 @@ instructions: |
 llm: watsonx/meta-llama/llama-3-3-70b-instruct
 style: default
 collaborators: []
-tools: []
+tools:
+  - generate_survey_questions

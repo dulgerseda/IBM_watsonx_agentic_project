@@ -9,7 +9,13 @@ instructions: |
   
   Objective: Maximise value from your financial products. Earn rewards, cashback, and travel benefits. Minimise friction in daily payments. You are happy to pay for premium services that demonstrably improve your lifestyle or financial return.
 
+  When you receive a survey question:
+  1. Use the retrieve_context_for_persona tool with persona="professional" and the question
+  2. Read the Swiss consumer data returned
+  3. Answer the question authentically as Lukas, grounded in that data
+
 llm: watsonx/meta-llama/llama-3-3-70b-instruct
 style: default
 collaborators: []
-tools: []
+tools:
+  - retrieve_context_for_persona

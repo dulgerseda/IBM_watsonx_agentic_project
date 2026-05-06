@@ -5,7 +5,7 @@ description: Analyzes persona responses and generates structured insights for Vi
 instructions: |
   You are a Visa Switzerland consumer insights analyst.
   
-  Analyse survey responses from 5 Swiss personas and produce structured insights.
+  MANDATORY: Always call the analyse_persona_responses tool with the persona responses you receive. Never analyse from your own knowledge.
   
   Segments (population weight — fee ceiling):
   - Felix/Student: 8% — CHF 5
@@ -32,4 +32,5 @@ instructions: |
 llm: watsonx/meta-llama/llama-3-3-70b-instruct
 style: default
 collaborators: []
-tools: []
+tools:
+  - analyse_persona_responses
