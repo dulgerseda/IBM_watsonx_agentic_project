@@ -3,28 +3,26 @@ Question Generator Tool for IBM watsonx Orchestrate.
 Generates survey questions based on a given topic.
 """
 
-import os
 import json
 import requests
 import time
 from ibm_watsonx_orchestrate.agent_builder.tools import tool
-from pathlib import Path
-
-from dotenv import load_dotenv
-load_dotenv("/Users/sedadulger/Visual studio codes/final-branch/.env")
+from ibm_watsonx_orchestrate.agent_builder.connections import ConnectionType
+from ibm_watsonx_orchestrate.run import connections
+MY_APP_ID = "watsonx_credentials"
 
 _iam_token_cache = None
 _iam_token_expiry = 0
 
 
-def _get_iam_token() -> str:
+def _get_iam_token(credentials) -> str:
     global _iam_token_cache, _iam_token_expiry
     if not _iam_token_cache or time.time() >= _iam_token_expiry:
         resp = requests.post(
             "https://iam.cloud.ibm.com/identity/token",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={"grant_type": "urn:ibm:params:oauth:grant-type:apikey",
-                  "apikey": os.environ["WATSONX_API_KEY"]},
+                  "apikey": credentials["WATSONX_API_KEY"]},
             timeout=30,
         )
         resp.raise_for_status()
@@ -34,11 +32,11 @@ def _get_iam_token() -> str:
     return _iam_token_cache
 
 
-def _call_watsonx(prompt: str) -> str:
-    token = _get_iam_token()
-    url = os.environ["WATSONX_URL"].rstrip("/")
-    project_id = os.environ["WATSONX_PROJECT_ID"]
-    model_id = os.environ.get("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
+def _call_watsonx(prompt: str, credentials) -> str:
+    token = _get_iam_token(credentials)
+    url = credentials["WATSONX_URL"].rstrip("/")
+    project_id = credentials["WATSONX_PROJECT_ID"]
+    model_id = credentials.get("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
 
     payload = {
         "model_id": model_id,
@@ -71,14 +69,17 @@ def _build_prompt(topic: str, num_questions: int) -> str:
     return f"""<s>[INST] <<SYS>>
 You are an expert market research consultant designing a consumer survey for Visa card products in Switzerland.
 Generate exactly {num_questions} survey questions about the topic below.
-Return ONLY a valid JSON array with fields: id, category, text.
-Categories: price_sensitivity, feature_preference, behavior_switching, trade_off, willingness_to_pay.
+Return ONLY a valid JSON array of objects. Each object must have exactly these 3 keys: "id", "category", "text".
+Example format:
+[{{"id": "Q1", "category": "price_sensitivity", "text": "Your question here?"}},
+ {{"id": "Q2", "category": "feature_preference", "text": "Your question here?"}}]
+Categories to use: price_sensitivity, feature_preference, behavior_switching, trade_off, willingness_to_pay.
 Questions must be in second person, applicable to all Swiss consumer segments.
 <</SYS>>
 
 TOPIC: {topic}
 
-Return ONLY the JSON array. [/INST]"""
+Return ONLY the JSON array of objects. [/INST]"""
 
 
 def _parse_questions(raw: str, num_questions: int) -> list:
@@ -93,11 +94,16 @@ def _parse_questions(raw: str, num_questions: int) -> list:
     except json.JSONDecodeError:
         last = json_str.rfind("}")
         json_str = json_str[:last + 1] + "]"
-        questions = json.loads(json_str)
+        try:
+            questions = json.loads(json_str)
+        except:
+            return []
     return [{"id": q.get("id", f"Q{i}"), "category": q.get("category", "general"),
              "text": q.get("text", "")} for i, q in enumerate(questions, 1)][:num_questions]
 
-@tool
+@tool(expected_credentials=[
+        {"app_id": MY_APP_ID, "type": ConnectionType.KEY_VALUE}
+    ])
 def generate_survey_questions(topic: str, num_questions: int = 5) -> str:
     """
     Generates survey questions for Visa card research based on a given topic.
@@ -109,9 +115,11 @@ def generate_survey_questions(topic: str, num_questions: int = 5) -> str:
     Returns:
         A JSON string containing the generated survey questions with id, category, and text fields.
     """
+    conn = connections.key_value(MY_APP_ID)
+
     try:
         prompt = _build_prompt(topic, num_questions)
-        raw = _call_watsonx(prompt)
+        raw = _call_watsonx(prompt, conn)
         questions = _parse_questions(raw, num_questions)
         return json.dumps(questions, ensure_ascii=False, indent=2)
     except Exception as e:

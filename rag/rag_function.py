@@ -8,8 +8,6 @@ from pathlib import Path
 from ibm_watsonx_orchestrate.agent_builder.tools import tool
 
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path("/Users/sedadulger/Visual studio codes/final-branch/rag")))
-
 
 @tool
 def retrieve_context_for_persona(persona: str, question: str) -> str:

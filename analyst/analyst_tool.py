@@ -3,15 +3,14 @@ Analyst Tool for IBM watsonx Orchestrate.
 Analyses persona survey responses and generates structured insights for the Visa product team.
 """
 
-import os
 import json
 import requests
 import time
 from ibm_watsonx_orchestrate.agent_builder.tools import tool
-from pathlib import Path
+from ibm_watsonx_orchestrate.agent_builder.connections import ConnectionType
+from ibm_watsonx_orchestrate.run import connections
 
-from dotenv import load_dotenv
-load_dotenv("/Users/sedadulger/Visual studio codes/final-branch/.env")
+MY_APP_ID = "watsonx_credentials"
 
 ANALYST_SYSTEM_PROMPT = """You are a Visa Switzerland consumer insights analyst. 
 Analyse survey responses from 5 Swiss personas and produce a structured JSON insight report.
@@ -57,14 +56,16 @@ _iam_token_cache = None
 _iam_token_expiry = 0
 
 
-def _get_iam_token() -> str:
+def _get_iam_token(credentials) -> str:
     global _iam_token_cache, _iam_token_expiry
     if not _iam_token_cache or time.time() >= _iam_token_expiry:
         resp = requests.post(
             "https://iam.cloud.ibm.com/identity/token",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data={"grant_type": "urn:ibm:params:oauth:grant-type:apikey",
-                  "apikey": os.environ["WATSONX_API_KEY"]},
+            data={
+                "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                "apikey": credentials["WATSONX_API_KEY"],
+            },
             timeout=30,
         )
         resp.raise_for_status()
@@ -74,11 +75,11 @@ def _get_iam_token() -> str:
     return _iam_token_cache
 
 
-def _call_watsonx(prompt: str) -> str:
-    token = _get_iam_token()
-    url = os.environ["WATSONX_URL"].rstrip("/")
-    project_id = os.environ["WATSONX_PROJECT_ID"]
-    model_id = os.environ.get("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
+def _call_watsonx(prompt: str, credentials) -> str:
+    token = _get_iam_token(credentials)
+    url = credentials["WATSONX_URL"].rstrip("/")
+    project_id = credentials["WATSONX_PROJECT_ID"]
+    model_id = credentials.get("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
 
     full_prompt = f"<s>[INST] <<SYS>>\n{ANALYST_SYSTEM_PROMPT}\n<</SYS>>\n\n{prompt} [/INST]"
 
@@ -109,8 +110,14 @@ def _call_watsonx(prompt: str) -> str:
     resp.raise_for_status()
 
 
-@tool
-def analyse_persona_responses(question_text: str, question_category: str, responses_json: str) -> str:
+@tool(expected_credentials=[
+        {"app_id": MY_APP_ID, "type": ConnectionType.KEY_VALUE}
+    ])
+def analyse_persona_responses(
+    question_text: str,
+    question_category: str,
+    responses_json: str,
+) -> str:
     """
     Analyses survey responses from Swiss consumer personas and generates structured Visa insights.
 
@@ -122,17 +129,18 @@ def analyse_persona_responses(question_text: str, question_category: str, respon
     Returns:
         A structured JSON insight report with verdicts, recommendations, and pricing analysis for the Visa product team.
     """
+    conn = connections.key_value(MY_APP_ID)
     try:
         responses = json.loads(responses_json)
     except json.JSONDecodeError as e:
         return f"Error: Invalid responses_json format: {str(e)}"
 
     PERSONA_METADATA = {
-        "student":      {"agent_label": "Campus Felix — Student Segment",           "population_weight_pct": 8,  "fee_ceiling": "CHF 5"},
-        "professional": {"agent_label": "Mobile-First Lukas — Professional Segment","population_weight_pct": 12, "fee_ceiling": "CHF 25-30"},
-        "mittelstand":  {"agent_label": "Average-Earner Anna — Mittelstand Segment","population_weight_pct": 28, "fee_ceiling": "CHF 12"},
-        "family":       {"agent_label": "Value-Smart Sandra — Family Segment",      "population_weight_pct": 22, "fee_ceiling": "CHF 10"},
-        "retired":      {"agent_label": "Trust-First Peter — Retired Segment",      "population_weight_pct": 18, "fee_ceiling": "CHF 5"},
+        "student":      {"agent_label": "Campus Felix — Student Segment",            "population_weight_pct": 8,  "fee_ceiling": "CHF 5"},
+        "professional": {"agent_label": "Mobile-First Lukas — Professional Segment", "population_weight_pct": 12, "fee_ceiling": "CHF 25-30"},
+        "mittelstand":  {"agent_label": "Average-Earner Anna — Mittelstand Segment", "population_weight_pct": 28, "fee_ceiling": "CHF 12"},
+        "family":       {"agent_label": "Value-Smart Sandra — Family Segment",       "population_weight_pct": 22, "fee_ceiling": "CHF 10"},
+        "retired":      {"agent_label": "Trust-First Peter — Retired Segment",       "population_weight_pct": 18, "fee_ceiling": "CHF 5"},
     }
 
     response_objects = []
@@ -155,7 +163,7 @@ def analyse_persona_responses(question_text: str, question_category: str, respon
     prompt = f"Analyse the following Swiss consumer survey response bundle:\n\n{json.dumps(bundle, indent=2, ensure_ascii=False)}"
 
     try:
-        raw = _call_watsonx(prompt)
+        raw = _call_watsonx(prompt, conn)
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start == -1:

@@ -11,14 +11,6 @@ from pathlib import Path
 from ibm_watsonx_orchestrate.agent_builder.tools import tool
 from pathlib import Path
 
-def _load_env():
-    try:
-        from dotenv import load_dotenv
-        load_dotenv("/Users/sedadulger/Visual studio codes/final-branch/.env")
-    except Exception:
-        pass
-_load_env()        
-
 BASE_DIR = Path(__file__).parent.parent
 RESPONSES_DIR = BASE_DIR / "responses"
 RESULTS_DIR = Path(__file__).parent / "results"

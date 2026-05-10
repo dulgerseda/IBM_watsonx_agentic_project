@@ -3,17 +3,14 @@ Insight Report Tool for IBM watsonx Orchestrate.
 Enriches raw analyst insights into category-level structured reports per persona.
 """
 
-import os
 import json
 import requests
 import time
 from ibm_watsonx_orchestrate.agent_builder.tools import tool
-from pathlib import Path
+from ibm_watsonx_orchestrate.agent_builder.connections import ConnectionType
+from ibm_watsonx_orchestrate.run import connections
 
-
-from dotenv import load_dotenv
-load_dotenv("/Users/sedadulger/Visual studio codes/final-branch/.env")
-
+MY_APP_ID = "watsonx_credentials"
 
 SYSTEM_PROMPT = """You are a senior consumer insights analyst for Visa Switzerland.
 You receive raw survey responses and verdicts for ONE persona and must produce a structured JSON enrichment.
@@ -73,14 +70,16 @@ _iam_token_cache = None
 _iam_token_expiry = 0
 
 
-def _get_iam_token() -> str:
+def _get_iam_token(credentials) -> str:
     global _iam_token_cache, _iam_token_expiry
     if not _iam_token_cache or time.time() >= _iam_token_expiry:
         resp = requests.post(
             "https://iam.cloud.ibm.com/identity/token",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data={"grant_type": "urn:ibm:params:oauth:grant-type:apikey",
-                  "apikey": os.environ["WATSONX_API_KEY"]},
+            data={
+                "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                "apikey": credentials["WATSONX_API_KEY"],
+            },
             timeout=30,
         )
         resp.raise_for_status()
@@ -90,11 +89,11 @@ def _get_iam_token() -> str:
     return _iam_token_cache
 
 
-def _call_watsonx(prompt: str) -> str:
-    token = _get_iam_token()
-    url = os.environ["WATSONX_URL"].rstrip("/")
-    project_id = os.environ["WATSONX_PROJECT_ID"]
-    model_id = os.environ.get("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
+def _call_watsonx(prompt: str, credentials) -> str:
+    token = _get_iam_token(credentials)
+    url = credentials["WATSONX_URL"].rstrip("/")
+    project_id = credentials["WATSONX_PROJECT_ID"]
+    model_id = credentials.get("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
 
     full_prompt = f"<s>[INST] <<SYS>>\n{SYSTEM_PROMPT}\n<</SYS>>\n\n{prompt} [/INST]"
 
@@ -125,8 +124,15 @@ def _call_watsonx(prompt: str) -> str:
     resp.raise_for_status()
 
 
-@tool
-def generate_insight_report(persona_name: str, persona_responses_json: str, raw_insights_json: str) -> str:
+@tool(expected_credentials=[
+        {"app_id": MY_APP_ID, "type": ConnectionType.KEY_VALUE}
+    ])
+
+def generate_insight_report(
+    persona_name: str,
+    persona_responses_json: str,
+    raw_insights_json: str,
+) -> str:
     """
     Generates an enriched category-level insight report for a single Swiss consumer persona.
 
@@ -138,12 +144,17 @@ def generate_insight_report(persona_name: str, persona_responses_json: str, raw_
     Returns:
         A structured JSON insight report with key_metrics, category_insights, and visa_recommendation for the given persona.
     """
+    conn = connections.key_value(MY_APP_ID)
+
     valid_personas = {"Felix", "Lukas", "Anna", "Sandra", "Peter"}
     if persona_name not in valid_personas:
         return f"Error: Invalid persona '{persona_name}'. Must be one of: {sorted(valid_personas)}"
 
     try:
-        persona_responses = json.loads(persona_responses_json)
+        if not persona_responses_json:
+            persona_responses = []
+        else:
+            persona_responses = json.loads(persona_responses_json)
         raw_insights = json.loads(raw_insights_json)
     except json.JSONDecodeError as e:
         return f"Error: Invalid JSON input: {str(e)}"
@@ -165,11 +176,11 @@ def generate_insight_report(persona_name: str, persona_responses_json: str, raw_
     )
 
     try:
-        raw = _call_watsonx(prompt)
+        raw = _call_watsonx(prompt, conn)
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start == -1:
-            return f"Error: No JSON found in response."
+            return "Error: No JSON found in response."
         return raw[start:end]
     except Exception as e:
         return f"Error generating insight report: {str(e)}"
