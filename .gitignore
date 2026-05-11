@@ -1,4 +1,5 @@
 .env
+venv
 .env.*
 __pycache__/
 *.pyc
@@ -10,7 +11,7 @@ evaluation/scripts/results/
 # Generated output files — ignore contents but keep folders
 responses/*.json
 insights/*.json
-evaluation/results/*.json
 orchestrator/reports/*.json
-survey/survey_questions.json
+evaluation/results/
+survey/survey_questions_*.json
 

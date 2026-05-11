@@ -47,7 +47,9 @@ load_env()
 
 BASE_DIR      = Path(__file__).parent.parent
 PROMPTS_DIR   = BASE_DIR / "prompts"
-SURVEY_FILE   = BASE_DIR / "survey" / "survey_questions.json"
+survey_dir  = BASE_DIR / "survey"
+_files      = sorted(survey_dir.glob("survey_questions*.json"), reverse=True)
+SURVEY_FILE = _files[0] if _files else survey_dir / "survey_questions.json"
 RESPONSES_DIR = BASE_DIR / "responses"
 RESPONSES_DIR.mkdir(exist_ok=True)
 
@@ -58,6 +60,9 @@ PERSONA_PROMPT_MAP = {
     "family":       "family_prompt_v2.txt",        # Sandra
     "retired":      "retired_prompt_v2.txt",       # Peter
 }
+
+# ── Token tracking ────────────────────────────────────────────────────────────
+_token_log = []
 
 # ── IAM Token ─────────────────────────────────────────────────────────────────
 
@@ -123,7 +128,15 @@ def call_watsonx(system_prompt: str, messages: list) -> str:
             continue
         print("STATUS:", resp.status_code)
         resp.raise_for_status()
-        raw = resp.json()["results"][0]["generated_text"].strip()
+        raw_response = resp.json()
+        # ── Token tracking ────────────────────────────────────────────────
+        r = raw_response["results"][0]
+        _token_log.append({
+            "input_tokens":  r.get("input_token_count", 0),
+            "output_tokens": r.get("generated_token_count", 0),
+        })
+        # ─────────────────────────────────────────────────────────────────
+        raw = r["generated_text"].strip()
         if "[/ANS]" in raw:
             raw = raw.split("[/ANS]")[0]
         elif "<<ANS>>" in raw:
@@ -181,8 +194,9 @@ PROVIDERS = {
 def build_session_context(history: list) -> str:
     if not history:
         return ""
+    recent = history[-3:] # only include last 3 Q&A pairs to keep prompt size manageable
     lines = []
-    for i, turn in enumerate(history, 1):
+    for i, turn in enumerate(recent, 1):
         lines.append(f"Q{i}: {turn['question']}")
         lines.append(f"A{i}: {turn['answer']}")
         lines.append("")
@@ -263,11 +277,20 @@ def run_survey(persona_key: str, provider: str) -> dict:
             "answers":     answers,       # all 3 runs for consistency check
         })
 
+    # ── Token summary for this persona ────────────────────────────────────
+    total_input  = sum(r["input_tokens"]  for r in _token_log)
+    total_output = sum(r["output_tokens"] for r in _token_log)
+
     return {
         "persona":   persona_key,
         "provider":  provider,
         "model":     model_name,
         "timestamp": datetime.now().isoformat(),
+        "token_usage": {
+            "input_tokens":  total_input,
+            "output_tokens": total_output,
+            "total_tokens":  total_input + total_output,
+        },
         "results":   results,
     }
 
